@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+<title>Smart Stick</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --g:#0F6E56;--gl:#E1F5EE;--gm:#1D9E75;--gd:#085041;
+  --a:#BA7517;--al:#FAEEDA;
+  --r:#A32D2D;--rl:#FCEBEB;
+  --b:#185FA5;--bl:#E6F1FB;
+  --bg:#ffffff;--bg2:#f5f4f0;
+  --text:#2C2C2A;--text2:#5F5E5A;
+  --border:#e0ddd6;--rad:12px;
+}
+body{font-family:system-ui,sans-serif;background:var(--bg2);color:var(--text);min-height:100vh}
+.screen{display:none;flex-direction:column;min-height:100vh;padding:14px;gap:10px}
+.screen.active{display:flex}
+.card{background:var(--bg);border-radius:var(--rad);border:0.5px solid var(--border);padding:16px}
+
+.setup-logo{text-align:center;padding:30px 0 10px;font-size:48px}
+.setup-title{text-align:center;font-size:22px;font-weight:500;margin-bottom:4px}
+.setup-sub{text-align:center;font-size:13px;color:var(--text2);margin-bottom:20px}
+.field-label{font-size:13px;color:var(--text2);margin-bottom:5px;display:block}
+input[type=text],input[type=password]{
+  width:100%;padding:10px 12px;border:0.5px solid var(--border);
+  border-radius:8px;font-size:14px;margin-bottom:12px;
+  background:var(--bg);color:var(--text);direction:ltr
+}
+.btn-go{width:100%;padding:13px;border-radius:8px;border:none;
+  background:var(--g);color:#E1F5EE;font-size:15px;font-weight:500;cursor:pointer}
+.btn-go:active{opacity:0.88}
+.commands-hint{font-size:13px;color:var(--text2);line-height:1.9}
+.commands-hint strong{color:var(--text);font-weight:500}
+
+#hdr{background:var(--g);border-radius:var(--rad);padding:12px 16px;
+  display:flex;align-items:center;gap:10px}
+#hdr-title{color:#E1F5EE;font-size:15px;font-weight:500;flex:1}
+#hdr-time{font-size:12px;color:#9FE1CB}
+#conn-dot{width:9px;height:9px;border-radius:50%;background:#5DCAA5;flex-shrink:0;transition:background .3s}
+#conn-dot.off{background:#F09595}
+#conn-dot.warn{background:#FAC775}
+
+#dist-card{text-align:center;padding:20px 16px}
+#dist-num{font-size:64px;font-weight:500;line-height:1;color:var(--gd);transition:color .3s}
+#dist-num.warn{color:var(--a)}
+#dist-num.danger{color:var(--r)}
+#dist-unit{font-size:13px;color:var(--text2);margin-top:2px}
+#event-pill{
+  display:inline-block;margin-top:10px;padding:5px 16px;
+  border-radius:20px;font-size:13px;font-weight:500;
+  background:var(--gl);color:var(--gd);transition:all .3s
+}
+#event-pill.warn{background:var(--al);color:var(--a)}
+#event-pill.danger{background:var(--rl);color:var(--r)}
+#event-pill.step{background:var(--bl);color:var(--b)}
+
+#mic-bar{display:flex;align-items:center;gap:8px;padding:10px 16px;
+  background:var(--bg);border-radius:var(--rad);border:0.5px solid var(--border)}
+#mic-dot{width:8px;height:8px;border-radius:50%;background:var(--border);
+  flex-shrink:0;transition:background .2s}
+#mic-dot.on{background:#E24B4A}
+#mic-dot.think{background:#EF9F27}
+#mic-txt{font-size:13px;color:var(--text2);flex:1}
+#mode-badge{font-size:11px;padding:3px 8px;border-radius:10px;
+  background:var(--bg2);color:var(--text2);border:0.5px solid var(--border)}
+#mode-badge.night{background:#1a1a2e;color:#9FE1CB;border-color:#0F6E56}
+
+#resp-card{flex:1}
+#resp-card h3{font-size:13px;font-weight:500;color:var(--text2);margin-bottom:8px}
+#resp-text{font-size:15px;line-height:1.75;color:var(--text);min-height:70px}
+#resp-hint{font-size:12px;color:var(--text2);margin-top:10px;
+  padding-top:10px;border-top:0.5px solid var(--border);line-height:1.7}
+
+#vid{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+#cnv{display:none}
+
+#night-flash{
+  position:fixed;inset:0;background:white;opacity:0;
+  pointer-events:none;z-index:9999;transition:opacity .1s
+}
+</style>
+</head>
+<body>
+
+<div id="night-flash"></div>
+<video id="vid" autoplay muted playsinline></video>
+<canvas id="cnv"></canvas>
+
+<!-- شاشة الإعداد -->
+<div class="screen active" id="s-setup">
+  <div class="setup-logo">🦯</div>
+  <div class="setup-title">العصا الذكية</div>
+  <div class="setup-sub">مساعد صوتي للمكفوفين</div>
+
+  <div class="card">
+    <label class="field-label">مفتاح Gemini API (للصور - يبدأ بـ AIza...)</label>
+    <input type="password" id="in-gemini" placeholder="AIzaSy..."/>
+
+    <label class="field-label">مفتاح Groq API (للنص السريع - يبدأ بـ gsk_...)</label>
+    <input type="password" id="in-groq" placeholder="gsk_..."/>
+
+    <label class="field-label">IP الـ ESP32 (بعد ما يتصل بالهوتسبوت)</label>
+    <input type="text" id="in-ip" placeholder="192.168.43.xxx:8080"/>
+
+    <button class="btn-go" onclick="startApp()">تشغيل المساعد</button>
+  </div>
+
+  <div class="card commands-hint">
+    <strong>الأوامر الصوتية:</strong><br>
+    "أين أنا الآن" ← تحديد موقعك (سريع ⚡)<br>
+    "صف لي المكان" ← وصف ما أمامك<br>
+    "كيف أصل إلى ..." ← التنقل<br>
+    "كم درجة أمامي" ← عد الدرج<br>
+    "هل الطريق آمن" ← فحص المسار
+  </div>
+</div>
+
+<!-- الشاشة الرئيسية -->
+<div class="screen" id="s-main">
+  <div id="hdr">
+    <div id="conn-dot" class="off"></div>
+    <span id="hdr-title">العصا الذكية</span>
+    <span id="hdr-time"></span>
+  </div>
+
+  <div class="card" id="dist-card">
+    <div id="dist-num">—</div>
+    <div id="dist-unit">سنتيمتر</div>
+    <div id="event-pill">جاري التوصيل...</div>
+  </div>
+
+  <div id="mic-bar">
+    <div id="mic-dot"></div>
+    <span id="mic-txt">يستمع لأوامرك...</span>
+    <span id="mode-badge">نهار</span>
+  </div>
+
+  <div class="card" id="resp-card">
+    <h3>المساعد يقول</h3>
+    <div id="resp-text">جاهز — قل أمراً صوتياً</div>
+    <div id="resp-hint">
+      "أين أنا" · "صف لي المكان"<br>
+      "كيف أصل إلى ..." · "هل الطريق آمن"
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════
+//  Smart Stick — Hybrid AI Core (Gemini+Groq)
+// ════════════════════════════════════════════
+
+// ── Keys & Config ────────────────────────────
+let GEMINI_KEY='', GROQ_KEY='', ESP_URL='';
+let gps=null, camStream=null;
+let recognition=null;
+let isSpeaking=false, isNight=false;
+let isProcessing=false;          // منع طلبات متوازية
+let lastDist=999, lastLevel=0;
+
+// Timeout configuration (ms)
+const TIMEOUTS={
+  groq:    4000,    // Groq سريع جداً
+  gemini:  8000,    // Gemini مع صور أبطأ
+  esp32:   800,
+};
+
+// ── helpers ──────────────────────────────────
+const $=id=>document.getElementById(id);
+function setResp(t){$('resp-text').textContent=t}
+function setMic(t,s){$('mic-txt').textContent=t;$('mic-dot').className=s||''}
+
+// ── Clock + Night detection ───────────────────
+function tickClock(){
+  const now=new Date();
+  $('hdr-time').textContent=now.toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'});
+  const h=now.getHours();
+  isNight=(h>=19||h<6);
+  $('mode-badge').textContent=isNight?'ليل 🌙':'نهار ☀️';
+  $('mode-badge').className=isNight?'night':'';
+}
+setInterval(tickClock,1000); tickClock();
+
+// ── GPS ──────────────────────────────────────
+function startGPS(){
+  if(!navigator.geolocation){
+    console.warn('GPS not available');
+    return;
+  }
+  navigator.geolocation.watchPosition(
+    p=>{gps={lat:p.coords.latitude,lng:p.coords.longitude,acc:Math.round(p.coords.accuracy)}},
+    e=>{console.warn('GPS error:',e.message)},
+    {enableHighAccuracy:true,maximumAge:5000,timeout:10000}
+  );
+}
+
+// ── Camera ───────────────────────────────────
+async function startCamera(){
+  try{
+    camStream=await navigator.mediaDevices.getUserMedia({
+      video:{
+        facingMode:'environment',
+        width:{ideal:640},     // طلب دقة منخفضة لتقليل الـ latency
+        height:{ideal:480}
+      },
+      audio:false
+    });
+    $('vid').srcObject=camStream;
+    // انتظر تجهيز الفيديو
+    await new Promise(r=>$('vid').onloadedmetadata=r);
+  }catch(e){
+    console.warn('Camera unavailable:',e.message);
+    speak('تنبيه: الكاميرا غير متاحة. سيعمل النظام بدون رؤية.');
+  }
+}
+
+// ── Flash (night only) ───────────────────────
+async function flashCapture(){
+  if(!camStream)return null;
+  if(isNight){
+    $('night-flash').style.opacity='1';
+    await new Promise(r=>setTimeout(r,80));
+  }
+  const frame=captureFrame();
+  if(isNight){
+    $('night-flash').style.opacity='0';
+  }
+  return frame;
+}
+
+function captureFrame(){
+  if(!camStream)return null;
+  try{
+    const vid=$('vid');
+    if(!vid.videoWidth)return null;  // الفيديو لم يبدأ بعد
+    const c=$('cnv');
+    // دقة 512×384 (نسبة 4:3) للتوازن بين الدقة والسرعة
+    c.width=512; c.height=384;
+    c.getContext('2d').drawImage(vid,0,0,512,384);
+    // جودة 65% — توفير محسوس في حجم البيانات بدون فقد كبير للدقة
+    return c.toDataURL('image/jpeg',0.65).split(',')[1];
+  }catch(e){
+    console.warn('Capture failed:',e);
+    return null;
+  }
+}
+
+// ── Vibration patterns ───────────────────────
+function vibrate(pattern){
+  if(!navigator.vibrate)return;
+  navigator.vibrate(pattern);
+}
+const VIB={
+  far:    [80],
+  near:   [150,80,150],
+  danger: [300,100,300,100,300],
+  step:   [500],
+  reply:  [40],
+  error:  [60,40,60,40,60],
+};
+
+// ── Distance UI ──────────────────────────────
+function updateDistUI(dist,level,event){
+  const dn=$('dist-num');
+  const ep=$('event-pill');
+  const cd=$('conn-dot');
+
+  dn.textContent=dist>=999?'—':Math.round(dist);
+  dn.className=level>=2?'danger':level>=1?'warn':'';
+  cd.className=level>=2?'warn':'';
+
+  const labels={clear:'آمن ✓',far:'عائق بعيد',near:'اقترب عائق',danger:'خطر! توقف',step:'حافة / درجة'};
+  const cls={clear:'',far:'',near:'warn',danger:'danger',step:'step'};
+  ep.textContent=labels[event]||'آمن';
+  ep.className=(cls[event]||'');
+}
+
+// ── Handle sensor data from ESP32 ────────────
+// منطق Hysteresis: لا نُنبّه إلا عند تغيّر حقيقي في مستوى الخطر
+let prevAlertLevel=0;
+
+function handleSensor(data){
+  const dist=data.distance||999;
+  const level=data.level||0;
+  const event=data.event||'clear';
+  lastDist=dist; lastLevel=level;
+
+  updateDistUI(dist,level,event);
+
+  // الاهتزاز فقط — لا يتعارض مع الميكروفون
+  if(event==='step')        vibrate(VIB.step);
+  else if(event==='danger') vibrate(VIB.danger);
+  else if(event==='near')   vibrate(VIB.near);
+  else if(event==='far')    vibrate(VIB.far);
+
+  // التنبيه الصوتي فقط للخطر الحقيقي (level=3) وعند تصاعد المستوى
+  // هذا يمنع التكرار المزعج عند كل قراءة سنسور
+  if(level===3 && prevAlertLevel<3){
+    autoSpeak('توقف! حافة أو خطر أمامك.');
+  }
+  prevAlertLevel=level;
+}
+
+let lastAutoSpeak=0;
+function autoSpeak(msg){
+  // قواعد صارمة لمنع التداخل مع تجربة المستخدم:
+  if(isSpeaking) return;        // لا تتكلم فوق نفسك
+  if(isProcessing) return;       // لا تقاطع معالجة طلب AI
+  if(Date.now()-lastAutoSpeak<8000) return;  // 8 ثواني cooldown (بدل 3)
+  lastAutoSpeak=Date.now();
+  speak(msg);
+  setResp(msg);
+}
+
+// ── ESP32 polling with proper error handling ─
+let espFailCount=0;
+function startPolling(){
+  if(!ESP_URL)return;
+  setInterval(async()=>{
+    try{
+      const ctrl=new AbortController();
+      const t=setTimeout(()=>ctrl.abort(),TIMEOUTS.esp32);
+      const r=await fetch('http://'+ESP_URL+'/sensor',{signal:ctrl.signal});
+      clearTimeout(t);
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const d=await r.json();
+      handleSensor(d);
+      $('conn-dot').className='';
+      espFailCount=0;
+    }catch(e){
+      espFailCount++;
+      $('conn-dot').className='off';
+      // بعد 10 محاولات فاشلة (5 ثواني)، أخبر المستخدم مرة واحدة
+      if(espFailCount===10&&!isSpeaking){
+        autoSpeak('انقطع الاتصال بالعصا. تحقق من تشغيل ESP32.');
+      }
+    }
+  },500);
+}
+
+// ── Speech Recognition with auto-recovery ────
+function startSpeech(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){
+    setMic('استخدم متصفح Chrome');
+    speak('متصفحك لا يدعم التعرف على الصوت. استخدم Chrome.');
+    return;
+  }
+  recognition=new SR();
+  recognition.lang='ar-SA';
+  recognition.continuous=true;
+  recognition.interimResults=false;
+
+  recognition.onstart =()=>{
+    if(!isSpeaking&&!isProcessing) setMic('يستمع...','on');
+  };
+  recognition.onresult=e=>{
+    const t=e.results[e.results.length-1][0].transcript.trim();
+    if(isSpeaking||isProcessing||recognitionPaused)return;
+
+    // فلتر: تجاهل النصوص القصيرة جداً (غالباً ضوضاء)
+    if(t.length<3)return;
+
+    // فلتر: لا تستجب إلا للأوامر المعروفة
+    // هذا يمنع التقاط أصوات من البيئة أو محادثات أخرى
+    if(classify(t)===null){
+      console.log('Ignored unrecognized speech:', t);
+      return;
+    }
+
+    processVoice(t);
+  };
+  recognition.onerror =ev=>{
+    console.warn('Speech error:',ev.error);
+    // أخطاء حرجة لا تحاول إعادة التشغيل فوراً
+    if(ev.error==='not-allowed'||ev.error==='service-not-allowed'){
+      setMic('صلاحية الميكروفون مرفوضة');
+      return;
+    }
+    setTimeout(()=>{try{recognition.start()}catch(_){}}, 1500);
+  };
+  recognition.onend =()=>{
+    // لا تعد التشغيل إذا كنا في وضع الإيقاف المؤقت المُتعمَّد
+    if(recognitionPaused)return;
+    setTimeout(()=>{try{recognition.start()}catch(_){}}, 500);
+  };
+  try{recognition.start()}catch(e){console.warn(e)}
+}
+
+// ── Command classifier ───────────────────────
+function classify(t){
+  if(/أين|وين|موقع|مكاني|فين/.test(t))             return 'location';
+  if(/صف|وصف|شوفي|ما أمام|شو أمام|المكان/.test(t)) return 'describe';
+  if(/كيف أصل|اوصلني|روحني|طريق.*إلى/.test(t))     return 'navigate';
+  if(/درج|درجة|كم درج|عدّ درج/.test(t))             return 'stairs';
+  if(/آمن|عوائق|في شي|المسار/.test(t))              return 'safety';
+  return null;
+}
+
+// ════════════════════════════════════════════
+//  AI Calls — Hybrid: Gemini (vision) + Groq (text)
+// ════════════════════════════════════════════
+
+// ── دالة fetch مع timeout + retry ───────────
+async function fetchWithRetry(url, opts, timeout, retries=1){
+  for(let i=0;i<=retries;i++){
+    try{
+      const ctrl=new AbortController();
+      const t=setTimeout(()=>ctrl.abort(),timeout);
+      const r=await fetch(url,{...opts,signal:ctrl.signal});
+      clearTimeout(t);
+      if(!r.ok){
+        const errText=await r.text().catch(()=>'');
+        throw new Error(`HTTP ${r.status}: ${errText.slice(0,100)}`);
+      }
+      return await r.json();
+    }catch(e){
+      if(i===retries)throw e;
+      // انتظار قصير قبل إعادة المحاولة (exponential backoff)
+      await new Promise(r=>setTimeout(r,300*(i+1)));
+    }
+  }
+}
+
+// ── Groq: للنصوص فقط (سريع جداً ~0.3s) ─────
+async function callGroq(prompt){
+  if(!GROQ_KEY)throw new Error('Groq key missing');
+  const data=await fetchWithRetry(
+    'https://api.groq.com/openai/v1/chat/completions',
+    {
+      method:'POST',
+      headers:{
+        'Authorization':`Bearer ${GROQ_KEY}`,
+        'Content-Type':'application/json'
+      },
+      body:JSON.stringify({
+        model:'llama-3.1-8b-instant',
+        messages:[{role:'user',content:prompt}],
+        max_tokens:150,           // ردود قصيرة = أسرع
+        temperature:0.3           // إجابات ثابتة وعملية
+      })
+    },
+    TIMEOUTS.groq,
+    1                              // محاولة إعادة واحدة
+  );
+  const reply=data?.choices?.[0]?.message?.content;
+  if(!reply)throw new Error('Empty Groq response');
+  return reply.trim();
+}
+
+// ── Gemini: للصور + نص (~1.5s) ──────────────
+async function callGemini(prompt, imgBase64){
+  if(!GEMINI_KEY)throw new Error('Gemini key missing');
+
+  const parts=[{text:prompt}];
+  if(imgBase64){
+    parts.push({
+      inline_data:{
+        mime_type:'image/jpeg',
+        data:imgBase64
+      }
+    });
+  }
+
+  // gemini-2.5-flash: سريع، يدعم vision، ومتاح في الـ free tier
+  // (gemini-1.5-flash تم إيقافه بالكامل في 2025)
+  const data=await fetchWithRetry(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
+    {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        contents:[{parts}],
+        generationConfig:{
+          maxOutputTokens:200,
+          temperature:0.3
+        }
+      })
+    },
+    TIMEOUTS.gemini,
+    1
+  );
+  const reply=data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if(!reply)throw new Error('Empty Gemini response');
+  return reply.trim();
+}
+
+// ── Router: يختار المزود المناسب ─────────────
+async function askAI(cmd, prompt, img){
+  // location = نص فقط → Groq (سريع)
+  // البقية تحتاج رؤية → Gemini
+  if(cmd==='location'){
+    return await callGroq(prompt);
+  }
+  return await callGemini(prompt, img);
+}
+
+// ── Process voice command ────────────────────
+async function processVoice(text){
+  const cmd=classify(text);
+  if(!cmd)return;
+
+  // منع طلبات متوازية
+  if(isProcessing)return;
+  isProcessing=true;
+
+  // إيقاف المايك خلال المعالجة (يمنع التداخل)
+  pauseRecognition();
+
+  setMic('يفكر...','think');
+  setResp('...');
+  vibrate(VIB.reply);
+
+  try{
+    const gpsStr=gps
+      ?`الإحداثيات: ${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)} (دقة ${gps.acc}م)`
+      :'GPS غير متاح';
+    const distStr=lastDist<999?`أقرب عائق: ${Math.round(lastDist)}سم.`:'';
+    const timeStr=isNight?'الوقت: ليل.':'الوقت: نهار.';
+
+    let prompt='', img=null;
+
+    switch(cmd){
+      case 'location':
+        // لا حاجة لصورة - GPS فقط
+        prompt=`أنت مساعد للمكفوفين. ${gpsStr}. ${timeStr}
+حدد الموقع: اذكر اسم الشارع أو الحي أو أقرب معلم مشهور.
+اذكر إذا كان قريباً من طريق رئيسي أو محطة باص.
+الرد: جملتان فقط، عربي فصيح واضح.`;
+        break;
+
+      case 'describe':
+        img=await flashCapture();
+        prompt=`أنت مساعد للمكفوفين. ${gpsStr}. ${timeStr}. ${distStr}
+${img?'انظر للصورة وصف:':'صف المحيط:'}
+1. نوع المكان (شارع/داخلي/حديقة)
+2. الأشياء الرئيسية أمامه
+3. أي خطر أو عائق
+الرد: 3 جمل قصيرة، عربي، لا تقل "أرى في الصورة".`;
+        break;
+
+      case 'navigate':
+        const dest=text.replace(/كيف أصل|اوصلني|روحني إلى|طريق إلى/g,'').trim();
+        img=await flashCapture();
+        prompt=`أنت مساعد تنقل للمكفوفين. ${gpsStr}. ${timeStr}.
+${img?'انظر للصورة للمساعدة في التوجيه.':''}
+المستخدم يريد: "${dest}"
+أعطه:
+1. هل يمشي أم يركب مواصلات؟
+2. الاتجاه الأول بوضوح (يمين/يسار/أمام)
+3. أقرب معلم يساعده
+الرد: 3 جمل، عربي.`;
+        break;
+
+      case 'stairs':
+        img=await flashCapture();
+        prompt=`أنت مساعد للمكفوفين. الحساس اكتشف حافة على بعد ${Math.round(lastDist)}سم.
+${img?'انظر للصورة:':''}
+1. هل هناك درج؟ صاعد أم نازل؟
+2. كم درجة تقريباً؟
+3. أمره بالتأني وكيف يمشي
+الرد: جملتان، عربي، مباشر.`;
+        break;
+
+      case 'safety':
+        img=await flashCapture();
+        prompt=`أنت مساعد للمكفوفين. ${gpsStr}. ${distStr}. ${timeStr}
+${img?'انظر للصورة:':''}
+هل الطريق أمامه آمن للمشي؟
+اذكر أي مخاطر (حفر، سيارات، رصيف).
+الرد: جملتان، عربي.`;
+        break;
+    }
+
+    const reply=await askAI(cmd, prompt, img);
+    speak(reply);
+    setResp(reply);
+
+  }catch(e){
+    console.error('AI error:',e);
+    vibrate(VIB.error);
+    let errMsg='تعذّر الاتصال بالمساعد الذكي.';
+
+    // رسائل مخصصة حسب نوع الخطأ
+    const msg=e.message||'';
+    if(msg.includes('401')||msg.includes('403')){
+      errMsg='مفتاح API غير صحيح. تحقق من الإعدادات.';
+    }else if(msg.includes('429')){
+      errMsg='تم تجاوز حد الطلبات. انتظر قليلاً ثم أعد المحاولة.';
+    }else if(e.name==='AbortError'||msg.includes('aborted')){
+      errMsg='الاتصال بطيء جداً. تحقق من الإنترنت.';
+    }else if(msg.includes('Failed to fetch')){
+      errMsg='لا يوجد اتصال بالإنترنت.';
+    }
+
+    speak(errMsg);
+    setResp(errMsg);
+  }finally{
+    isProcessing=false;
+    // ملاحظة: لا نحتاج setMic('يستمع...') هنا
+    // لأن speak() يستدعي resumeRecognition() وهذا يضبط الـ UI
+  }
+}
+
+// ── Text to Speech (يوقف الاستماع أثناء التحدث) ─
+function speak(text){
+  if(!window.speechSynthesis)return;
+  window.speechSynthesis.cancel();
+  isSpeaking=true;
+
+  // إيقاف المايك مؤقتاً — يمنع التقاط صوت المساعد كأمر
+  pauseRecognition();
+
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='ar-SA'; u.rate=1.05; u.pitch=1.0;
+  u.onend=()=>{
+    isSpeaking=false;
+    // أعد تشغيل المايك بعد 600ms (وقت آمن للصدى)
+    setTimeout(resumeRecognition, 600);
+  };
+  u.onerror=()=>{
+    isSpeaking=false;
+    setTimeout(resumeRecognition, 600);
+  };
+  window.speechSynthesis.speak(u);
+}
+
+// ── إدارة دورة حياة المايك ──────────────────
+let recognitionPaused=false;
+function pauseRecognition(){
+  if(!recognition)return;
+  recognitionPaused=true;
+  try{recognition.stop()}catch(_){}
+  setMic('المساعد يتحدث...','');
+}
+function resumeRecognition(){
+  if(!recognition)return;
+  recognitionPaused=false;
+  try{recognition.start()}catch(_){}
+}
+
+// ── Start App ────────────────────────────────
+async function startApp(){
+  GEMINI_KEY=$('in-gemini').value.trim();
+  GROQ_KEY  =$('in-groq').value.trim();
+  ESP_URL   =$('in-ip').value.trim();
+
+  if(!GEMINI_KEY){alert('أدخل مفتاح Gemini API (يبدأ بـ AIza)');return;}
+  if(!GROQ_KEY)  {alert('أدخل مفتاح Groq API (يبدأ بـ gsk_)');return;}
+
+  // تحقق سريع من شكل المفاتيح
+  if(!GEMINI_KEY.startsWith('AIza')){
+    if(!confirm('مفتاح Gemini عادة يبدأ بـ AIza. هل تريد المتابعة؟'))return;
+  }
+  if(!GROQ_KEY.startsWith('gsk_')){
+    if(!confirm('مفتاح Groq عادة يبدأ بـ gsk_. هل تريد المتابعة؟'))return;
+  }
+
+  $('s-setup').classList.remove('active');
+  $('s-main').classList.add('active');
+
+  startGPS();
+  await startCamera();
+  startSpeech();
+  startPolling();
+
+  speak('المساعد جاهز. قل أين أنا أو صف لي المكان.');
+  setResp('المساعد جاهز — قل أمراً صوتياً');
+  vibrate([100,50,100]);
+}
+</script>
+</body>
+</html>
